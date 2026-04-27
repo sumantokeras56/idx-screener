@@ -1,4 +1,4 @@
-const API_BASE = 'https://idx-yahoo-proxy.waxewi.workers.dev';
+// datafetcher.js - Fetch langsung dari Yahoo Finance
 const CACHE = new Map();
 const CACHE_TTL = 60 * 1000;
 
@@ -9,8 +9,14 @@ export async function fetchCandles(ticker) {
     return cached.data;
   }
 
-  const url = `${API_BASE}/quote?ticker=${ticker}&interval=1d&range=3mo`;
-  const response = await fetch(url);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=3mo`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+    },
+  });
+
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} untuk ${ticker}`);
   }

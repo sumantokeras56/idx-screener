@@ -1,77 +1,44 @@
-// =====================================================
-// indicators.js
-// Menghitung semua indikator teknikal:
-// return, volatilitas, volume, ADL, trend, mean reversion
-// =====================================================
-
-/**
- * @param {Array} candles - array { timestamp, open, high, low, close, volume }
- * @returns {Object} semua indikator
- */
 export function computeIndicators(candles) {
   const closes = candles.map(c => c.close);
   const volumes = candles.map(c => c.volume);
   const highs = candles.map(c => c.high);
   const lows = candles.map(c => c.low);
 
-  // 1. Log return dan volatilitas 20
   const logReturns = [];
   for (let i = 1; i < closes.length; i++) {
     logReturns.push(Math.log(closes[i] / closes[i - 1]));
   }
   const volatility20 = rollingStd(logReturns, 20);
 
-  // Volatilitas 5 hari untuk deteksi ekspansi
   const shortVol = rollingStd(logReturns, 5);
   const volExpansion = shortVol.map((v, i) => {
     if (i < 19 || volatility20[i] === null) return false;
     return v > volatility20[i] * 1.5;
   });
 
-  // 2. Volume intelligence
   const volMA20 = rollingMean(volumes, 20);
   const volSpikeRatio = volumes.map((v, i) => volMA20[i] ? v / volMA20[i] : 1);
 
-  // 3. Accumulation Distribution Line (ADL)
   const adl = calculateADL(candles);
 
-  // Divergence ADL vs price (20 hari terakhir)
   const adlSlope = linearRegressionSlope(adl.slice(-20), range(20));
   const priceSlope = linearRegressionSlope(closes.slice(-20), range(20));
   const adlPriceDivergence = adlSlope > 0 && priceSlope < 0;
 
-  // 4. Trend & struktur
   const slope20 = linearRegressionSlope(closes.slice(-20), range(20));
   const breakout = detectBreakout(candles);
   const structure = marketStructure(candles);
 
-  // 5. Mean reversion
   const ma20 = rollingMean(closes, 20);
   const std20 = rollingStd(closes, 20);
   const zScore = closes.map((c, i) => (c - ma20[i]) / (std20[i] || 1));
 
   return {
-    logReturns,
-    volatility20,
-    volExpansion,
-    volMA20,
-    volSpikeRatio,
-    adl,
-    adlPriceDivergence,
-    slope20,
-    breakout,
-    structure,
-    zScore,
-    ma20,
-    // data mentah untuk modul selanjutnya
-    closes,
-    volumes,
-    highs,
-    lows,
+    logReturns, volatility20, volExpansion, volMA20, volSpikeRatio,
+    adl, adlPriceDivergence, slope20, breakout, structure, zScore, ma20,
+    closes, volumes, highs, lows,
   };
 }
-
-// ---------- Helpers ----------
 
 function rollingMean(arr, period) {
   const result = [];
@@ -114,7 +81,6 @@ function calculateADL(candles) {
   const adl = [0];
   for (let i = 1; i < candles.length; i++) {
     const { high, low, close, volume } = candles[i];
-    const prevClose = candles[i - 1].close;
     const mfm = ((close - low) - (high - close)) / (high - low || 1);
     const mfv = mfm * volume;
     adl.push(adl[i - 1] + mfv);
