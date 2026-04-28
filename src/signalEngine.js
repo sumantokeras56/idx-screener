@@ -1,38 +1,67 @@
-export function generateSignal(ind, gap) {
-  const last = ind.closes.length - 1;
-  const latestVolSpike = ind.volSpikeRatio[last];
-  const latestZScore = ind.zScore[last];
-  const adlRising = ind.adl[last] > ind.adl[last - 1];
-  const adlFalling = ind.adl[last] < ind.adl[last - 1];
+// signalEngine.js - signal generation with advanced gating + news
 
-  const divergenceAccumulation = ind.adlPriceDivergence;
-  const sideways = Math.abs(ind.slope20 / ind.closes[last]) < 0.002;
-  const stealthAccumulation = sideways && adlRising && latestVolSpike > 1.2;
-  const accumulation = divergenceAccumulation || stealthAccumulation;
-
-  const divergenceDistribution = adlFalling && ind.slope20 > 0;
-  const volumeExhaustion = latestVolSpike > 1.5 && adlFalling && ind.structure === 'bearish';
-  const distribution = divergenceDistribution || volumeExhaustion;
-
+export function generateSignal(ind, gap, advanced, news = null) {
   const reasons = [];
-  if (accumulation) reasons.push('Accumulation detected');
-  if (stealthAccumulation) reasons.push('Stealth accumulation');
-  if (distribution) reasons.push('Distribution detected');
-  if (volumeExhaustion) reasons.push('Volume exhaustion');
+  const enoughData = ind.closes.length >= 20;
+  if (!enoughData) {
+    return { signal: 'HOLD', confidence: 'LOW', reasons };
+  }
+
+  // === NEWS HARD GATE ===
+  if (news && news.newsScore < -0.6 && news.newsConfidence > 0.5) {
+    reasons.push(`Sentimen berita sangat negatif (${news.newsScore.toFixed(2)})`);
+    return { signal: 'HOLD', confidence: 'LOW', reasons };
+  }
+
+  if (advanced.regime === 'expansion') {
+    reasons.push('Expansion regime - tidak entry');
+    return { signal: 'HOLD', confidence: 'LOW', reasons };
+  }
+  if (advanced.cnmfSlope <= 0) {
+    reasons.push('CNMF slope negatif');
+    return { signal: 'HOLD', confidence: 'LOW', reasons };
+  }
+
+  const conds = [
+    advanced.nmfPersistent,
+    advanced.imbalance > 0.2,
+    advanced.rcr < 0.7,
+    advanced.per > 0.5,
+    advanced.volPersistence > 0.5,
+    advanced.structuralBreakBullish
+  ].filter(Boolean).length;
 
   let signal = 'HOLD';
   let confidence = 'LOW';
-  const buyConditions = [accumulation, ind.breakout, latestVolSpike > 1.3, gap.hasContinuation, Math.abs(latestZScore) < 1.5, adlRising].filter(Boolean).length;
-  const sellConditions = [distribution, gap.hasFade, adlFalling, latestVolSpike < 0.7, gap.trapGap].filter(Boolean).length;
 
-  if (buyConditions >= 4) { signal = 'BUY'; confidence = 'HIGH'; reasons.push('Breakout confirmed', 'Volume spike', 'Gap continuation'); }
-  else if (buyConditions >= 3) { signal = 'BUY'; confidence = 'MEDIUM'; if (ind.breakout) reasons.push('Breakout confirmed'); }
-  else if (accumulation && adlRising && gap.hasContinuation) { signal = 'BUY'; confidence = 'MEDIUM'; }
-  else if (accumulation && latestZScore < -2) { signal = 'BUY'; confidence = 'LOW'; reasons.push('Oversold reversal potential'); }
-  else if (sellConditions >= 4) { signal = 'SELL'; confidence = 'HIGH'; reasons.push('Distribution confirmed', 'Gap fade signal', 'Volume exhaustion'); }
-  else if (sellConditions >= 3) { signal = 'SELL'; confidence = 'MEDIUM'; if (distribution) reasons.push('Distribution active'); if (gap.trapGap) reasons.push('Trap gap detected'); }
-  else if (distribution && gap.hasFade) { signal = 'SELL'; confidence = 'MEDIUM'; }
-  else if (gap.trapGap && adlFalling) { signal = 'SELL'; confidence = 'LOW'; reasons.push('Trap gap + ADL falling'); }
+  if (conds >= 3) {
+    signal = 'BUY';
+    confidence = 'MEDIUM';
+    reasons.push('Persistent NMF flow', 'Compression/trending regime');
+    const highConds = [
+      advanced.pin > 0.3,
+      advanced.kyleLambdaTrend === 'decreasing',
+      advanced.hurst > 0.5,
+      advanced.heavyTail
+    ].filter(Boolean).length;
+    if (highConds >= 3) {
+      confidence = 'HIGH';
+      reasons.push('Informed trader aktif', 'Structural break');
+    }
+  } else {
+    reasons.push('Kondisi buy belum terpenuhi');
+  }
+
+  // === NEWS CONFIDENCE BOOST ===
+  if (news && signal === 'BUY') {
+    if (news.newsScore > 0.4 && news.newsConfidence > 0.4) {
+      if (confidence === 'MEDIUM') confidence = 'HIGH';
+      reasons.push(`Didukung sentimen berita positif (${news.newsScore.toFixed(2)})`);
+    } else if (news.newsScore < -0.3 && news.newsConfidence > 0.4) {
+      if (confidence === 'HIGH') confidence = 'MEDIUM';
+      reasons.push('Perhatian: sentimen berita mixed');
+    }
+  }
 
   return { signal, confidence, reasons: [...new Set(reasons)] };
 }

@@ -274,8 +274,24 @@ self.addEventListener('fetch',e=>{
     }
 
     // Dashboard
-    if (url.pathname === '/dashboard') {
-      return env.ASSETS.fetch(new URL('/dashboard.html', request.url));
+    if (url.pathname === '/dashboard' || url.pathname === '/') {
+      // AUTO CACHE-BUST: ganti angka BUILD_TIME setiap kali deploy
+      // Contoh: '20260428_1' -> '20260428_2' -> dst
+      const BUILD_TIME = '20260428_1';
+      const resp = await env.ASSETS.fetch(new URL('/dashboard.html', request.url));
+      let html = await resp.text();
+      html = html
+        .replace('/dashboard.css"', `/dashboard.css?v=${BUILD_TIME}"`)
+        .replace('/dashboard.js"', `/dashboard.js?v=${BUILD_TIME}"`);
+      return new Response(html, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      });
     }
 
     return new Response('AlphaScreener IDX API - OK', { status: 200 });
